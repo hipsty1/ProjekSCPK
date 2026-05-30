@@ -289,6 +289,57 @@ with tab1:
 # Tab 2
 
 with tab2:
+    col1, col2 = st.columns(2)
+    with col1:
+
+        st.subheader("Distribusi Bobot")
+
+        fig_pie, ax_pie = plt.subplots(figsize=(5,5))
+
+        labels = [
+            "Price",
+            "Recent",
+            "All Review",
+            "Language",
+            "Feature"
+        ]
+
+        weights = [w1, w2, w3, w4, w5]
+
+        ax_pie.pie(
+            weights,
+            labels=labels,
+            autopct="%1.0f%%",
+            startangle=90
+        )
+
+        st.pyplot(fig_pie)
+
+    with col2:
+
+        st.subheader("Bobot Kriteria")
+
+        weight_df = pd.DataFrame({
+            "Kriteria": [
+                "Price",
+                "Recent Reviews",
+                "All Reviews",
+                "Languages",
+                "Features"
+            ],
+            "Bobot": weights
+        })
+
+        fig_weight, ax_weight = plt.subplots(figsize=(6,5))
+
+        ax_weight.barh(
+            weight_df["Kriteria"],
+            weight_df["Bobot"]
+        )
+
+        ax_weight.set_xlabel("Bobot")
+
+        st.pyplot(fig_weight)
 
     fig, ax = plt.subplots(figsize=(10, max(5, top_n * 0.55)))
 
