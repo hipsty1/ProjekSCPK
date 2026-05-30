@@ -1,369 +1,365 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+
+# Page config
 
 st.set_page_config(
-    page_title="SPK Rekomendasi Game Steam",
-    page_icon="🎮",
-    layout="wide"
+    page_title="SPK Rekomendasi Game Steam Menggunakan Metode SAW",
+    page_icon=" ",
+    layout="wide",
 )
 
-st.title("🎮 SPK Rekomendasi Game Steam")
-st.caption("Metode Simple Additive Weighting (SAW)")
+# Custom CSS
 
+st.markdown("""
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Poppins', sans-serif;
+}
+
+.main {
+    background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+    color: white;
+}
+
+h1, h2, h3 {
+    color: #f8fafc !important;
+}
+
+[data-testid="stSidebar"] {
+    background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid #334155;
+}
+
+.stMetric {
+    background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+    padding: 15px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+
+.block-container {
+    background:linear-gradient(135deg,#3163E0,#1e293b,#9CBBFF);
+    padding-top: 2rem;
+}
+
+div[data-baseweb="tab-list"] {
+    gap: 12px;
+}
+
+button[data-baseweb="tab"] {
+    background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+    border-radius: 10px;
+    color: white;
+    padding: 10px 18px;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+}
+
+input {
+    border-radius: 12px !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# Hero Section
+
+st.markdown("""
+<div style='padding:30px;border-radius:25px;
+background:linear-gradient(135deg,#9CBBFF,#3163E0,#1e293b);
+box-shadow:0 10px 30px rgba(0,0,0,0.4);
+color:white;text-align:center;margin-bottom:25px;'>
+
+<h1 style='font-size:42px;'>Steam Game Recommendation System</h1>
+<p style='font-size:18px;'>
+Sistem Pendukung Keputusan menggunakan metode <b>Simple Additive Weighting (SAW)</b>
+</p>
+
+</div>
+""", unsafe_allow_html=True)
+
+# Load & cache data
 
 @st.cache_data
-def load_data():
-
+def load_and_preprocess():
     df = pd.read_csv("merged_data.csv")
 
-    cols = [
+    important_cols = [
         "Original Price",
         "Recent Reviews Number",
         "All Reviews Number",
         "Supported Languages",
-        "Game Features"
+        "Game Features",
     ]
-
-    df = df.dropna(subset=cols)
+    df = df.dropna(subset=important_cols)
 
     df["Original Price"] = (
         df["Original Price"]
         .astype(str)
         .str.replace("$", "", regex=False)
-        .str.replace(
-            r"(?i).*free.*",
-            "0",
-            regex=True
-        )
     )
 
     df["Recent Reviews Number"] = (
         df["Recent Reviews Number"]
         .astype(str)
-        .str.extract(r'of the ([\d,]+)')[0]
+        .str.extract(r"of the ([\d,]+)")[0]
         .str.replace(",", "", regex=False)
+        .astype(float)
     )
 
     df["All Reviews Number"] = (
         df["All Reviews Number"]
         .astype(str)
-        .str.extract(r'of the ([\d,]+)')[0]
+        .str.extract(r"of the ([\d,]+)")[0]
         .str.replace(",", "", regex=False)
+        .astype(float)
     )
 
-    for col in [
-        "Original Price",
-        "Recent Reviews Number",
-        "All Reviews Number"
-    ]:
-        df[col] = pd.to_numeric(
-            df[col],
-            errors="coerce"
-        )
+    numeric_cols = ["Original Price", "Recent Reviews Number", "All Reviews Number"]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df = df.dropna()
+    df = df.dropna(subset=numeric_cols)
+    df = df[df["Original Price"] >= 0]
 
-    df["Language Count"] = (
-        df["Supported Languages"]
-        .fillna("")
-        .apply(
-            lambda x: len(str(x).split(","))
-        )
+    df["Language Count"] = df["Supported Languages"].apply(
+        lambda x: len(str(x).split(","))
     )
 
-    df["Feature Count"] = (
-        df["Game Features"]
-        .fillna("")
-        .apply(
-            lambda x: len(str(x).split(","))
-        )
+    df["Feature Count"] = df["Game Features"].apply(
+        lambda x: len(str(x).split(","))
     )
 
-    df["Recent Reviews Number"] = np.log1p(
-        df["Recent Reviews Number"]
-    )
+    df = df[df["All Reviews Number"] >= 100000]
 
-    df["All Reviews Number"] = np.log1p(
-        df["All Reviews Number"]
-    )
+    df["Recent Reviews Number"] = np.log1p(df["Recent Reviews Number"])
+    df["All Reviews Number"] = np.log1p(df["All Reviews Number"])
 
-    return df
+    return df.reset_index(drop=True)
 
 
-df = load_data()
+df = load_and_preprocess()
 
-st.sidebar.header("Pengaturan")
+# Dashboard Statistics
 
-criteria = {}
+col1, col2, col3, col4 = st.columns(4)
 
-if st.sidebar.checkbox("Harga", value=True):
-    criteria["Original Price"] = st.sidebar.slider(
-        "Bobot Harga",
-        0.0, 1.0, 0.20, 0.05
-    )
+with col1:
+    st.metric("Total Game", f"{len(df):,}")
 
-if st.sidebar.checkbox("Review Terbaru", value=True):
-    criteria["Recent Reviews Number"] = st.sidebar.slider(
-        "Bobot Review Terbaru",
-        0.0, 1.0, 0.25, 0.05
-    )
+with col2:
+    st.metric("Harga Rata-rata", f"${df['Original Price'].mean():.2f}")
 
-if st.sidebar.checkbox("Total Review", value=True):
-    criteria["All Reviews Number"] = st.sidebar.slider(
-        "Bobot Total Review",
-        0.0, 1.0, 0.30, 0.05
-    )
+with col3:
+    st.metric("Avg Language", f"{df['Language Count'].mean():.1f}")
 
-if st.sidebar.checkbox("Jumlah Bahasa", value=True):
-    criteria["Language Count"] = st.sidebar.slider(
-        "Bobot Jumlah Bahasa",
-        0.0, 1.0, 0.10, 0.05
-    )
+with col4:
+    st.metric("Avg Review", f"{df['All Reviews Number'].mean():.2f}")
 
-if st.sidebar.checkbox("Jumlah Fitur", value=True):
-    criteria["Feature Count"] = st.sidebar.slider(
-        "Bobot Jumlah Fitur",
-        0.0, 1.0, 0.15, 0.05
-    )
+with st.expander("Tentang Metode SAW"):
+    st.write("""
+    Simple Additive Weighting (SAW) merupakan metode SPK
+    yang melakukan normalisasi setiap kriteria kemudian
+    menjumlahkannya berdasarkan bobot.
 
-free_only = st.sidebar.checkbox(
-    "Hanya Game Gratis"
-)
+    Semakin tinggi skor SAW maka semakin direkomendasikan.
+    """)
 
-review_limit = np.log1p(100000)
+# Sidebar
 
-if free_only:
+with st.sidebar:
+    st.header("Pengaturan")
+    st.subheader("Bobot Kriteria")
+    st.caption("Total bobot harus = 1.00")
 
-    df = df[
-        (df["Original Price"] == 0)
-        &
-        (
-            df["All Reviews Number"]
-            >= review_limit
-        )
-    ]
+    w1 = st.slider("Original Price (Cost)",    0.0, 1.0, 0.20, 0.05)
+    w2 = st.slider("Recent Reviews",           0.0, 1.0, 0.25, 0.05)
+    w3 = st.slider("All Reviews",              0.0, 1.0, 0.30, 0.05)
+    w4 = st.slider("Language Count",          0.0, 1.0, 0.10, 0.05)
+    w5 = st.slider("Feature Count",           0.0, 1.0, 0.15, 0.05)
 
-else:
+    total_w = round(w1 + w2 + w3 + w4 + w5, 2)
 
-    df = df[
-        df["All Reviews Number"]
-        >= review_limit
-    ]
-
-if len(df) == 0:
-    st.warning(
-        "Tidak ada data yang sesuai filter."
-    )
-    st.stop()
-
-if len(criteria) == 0:
-    st.warning(
-        "Pilih minimal satu kriteria."
-    )
-    st.stop()
-
-total_weight = sum(criteria.values())
-
-if total_weight == 0:
-    st.warning(
-        "Total bobot tidak boleh nol."
-    )
-    st.stop()
-
-weights = {
-    k: v / total_weight
-    for k, v in criteria.items()
-}
-
-X = df[
-    list(weights.keys())
-].copy()
-
-normalized = pd.DataFrame(
-    index=X.index
-)
-
-for col in X.columns:
-
-    if col == "Original Price":
-
-        if X[col].nunique() == 1:
-
-            normalized[col] = 1.0
-
-        else:
-
-            normalized[col] = (
-                X[col].max() - X[col]
-            ) / (
-                X[col].max() - X[col].min()
-            )
-
+    if total_w != 1.0:
+        st.warning(f"Total bobot saat ini: {total_w}")
     else:
+        st.success(f"Total bobot: {total_w}")
 
-        max_val = X[col].max()
-
-        if max_val == 0:
-
-            normalized[col] = 1.0
-
-        else:
-
-            normalized[col] = (
-                X[col] / max_val
-            )
-
-normalized = normalized.fillna(1)
-
-scores = np.zeros(
-    len(normalized)
-)
-
-for col, weight in weights.items():
-
-    scores += (
-        normalized[col]
-        * weight
+    top_n = st.number_input(
+        "Jumlah Top Game",
+        min_value=5,
+        max_value=104,
+        value=10,
+        step=5,
     )
 
-df_saw = df.copy()
+# SAW Calculation
 
-df_saw["SAW Score"] = scores
+criteria = [
+    "Original Price",
+    "Recent Reviews Number",
+    "All Reviews Number",
+    "Language Count",
+    "Feature Count",
+]
 
-ranking = (
-    df_saw
-    .sort_values(
-        by="SAW Score",
-        ascending=False
+X = df[criteria].copy()
+normalized = pd.DataFrame(index=X.index)
+
+normalized["C1"] = X["Original Price"].min() / X["Original Price"]
+normalized["C2"] = X["Recent Reviews Number"] / X["Recent Reviews Number"].max()
+normalized["C3"] = X["All Reviews Number"] / X["All Reviews Number"].max()
+normalized["C4"] = X["Language Count"] / X["Language Count"].max()
+normalized["C5"] = X["Feature Count"] / X["Feature Count"].max()
+
+weights_array = np.array([w1, w2, w3, w4, w5])
+scores = normalized.dot(weights_array)
+
+df["SAW Score"] = scores
+ranking = df.sort_values("SAW Score", ascending=False)
+
+top = ranking[[
+    "Title", "Original Price", "Recent Reviews Number",
+    "All Reviews Number", "Language Count",
+    "Feature Count", "SAW Score",
+]].head(top_n).reset_index(drop=True)
+
+# Tabs
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Hasil",
+    "Visualisasi",
+    "Normalisasi",
+    "Dataset",
+])
+
+# Tab 1
+
+with tab1:
+
+    st.subheader(f"Top {top_n} Game")
+
+    cards = st.columns(3)
+    medals = ["🥇", "🥈", "🥉"]
+    colors = ["#f59e0b", "#94a3b8", "#b45309"]
+
+    for i, card in enumerate(cards):
+        if i < len(top):
+            row = top.iloc[i]
+
+            with card:
+                st.markdown(f"""
+                <div style='
+                    background: linear-gradient(135deg, {colors[i]}, #1e293b);
+                    padding:25px;
+                    border-radius:22px;
+                    color:white;
+                    min-height:220px;
+                    box-shadow:0 6px 18px rgba(0,0,0,0.35);
+                '>
+
+                <h2>{medals[i]} Rank {i+1}</h2>
+                <h3>{row['Title'][:35]}</h3>
+
+                <hr>
+
+                <p>Score: <b>{row['SAW Score']:.4f}</b></p>
+                <p>Price: ${row['Original Price']:.2f}</p>
+                <p>Languages: {row['Language Count']}</p>
+
+                </div>
+                """, unsafe_allow_html=True)
+
+    st.divider()
+
+    st.dataframe(top, use_container_width=True)
+
+# Tab 2
+
+with tab2:
+
+    fig, ax = plt.subplots(figsize=(10, max(5, top_n * 0.55)))
+
+    fig.patch.set_facecolor('#111827')
+    ax.set_facecolor('#111827')
+
+    colors = plt.cm.plasma(np.linspace(0.2, 0.9, len(top)))
+
+    bars = ax.barh(top["Title"], top["SAW Score"], color=colors)
+
+    ax.tick_params(colors='white')
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
+    ax.title.set_color('white')
+
+    ax.set_title(
+        f"Top {top_n} Steam Games",
+        fontsize=15,
+        fontweight='bold'
     )
-    .reset_index(drop=True)
-)
 
-ranking["Rank"] = (
-    ranking.index + 1
-)
-
-best = ranking.iloc[0]
-
-st.success(
-    f"""
-🥇 GAME TERBAIK
-
-{best['Title']}
-
-SAW Score : {best['SAW Score']:.4f}
-"""
-)
-
-m1, m2 = st.columns(2)
-
-with m1:
-    st.metric(
-        "Jumlah Game",
-        len(df)
-    )
-
-with m2:
-    st.metric(
-        "Kriteria Aktif",
-        len(weights)
-    )
-
-st.subheader("Dataset")
-
-st.dataframe(
-    df,
-    height=350,
-    use_container_width=True
-)
-
-left, right = st.columns(2)
-
-with left:
-
-    st.subheader("Normalisasi")
-
-    st.dataframe(
-        normalized.round(4),
-        height=350,
-        use_container_width=True
-    )
-
-with right:
-
-    st.subheader("Ranking")
-
-    st.dataframe(
-        ranking[
-            [
-                "Rank",
-                "Title",
-                "Original Price",
-                "SAW Score"
-            ]
-        ],
-        height=350,
-        use_container_width=True
-    )
-
-st.subheader("🏅 Podium")
-
-podium = ranking.head(3)
-
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    st.info(
-        f"🥇 {podium.iloc[0]['Title']}\n\nSkor: {podium.iloc[0]['SAW Score']:.4f}"
-    )
-
-if len(podium) > 1:
-    with c2:
-        st.info(
-            f"🥈 {podium.iloc[1]['Title']}\n\nSkor: {podium.iloc[1]['SAW Score']:.4f}"
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(
+            width + 0.002,
+            bar.get_y() + bar.get_height()/2,
+            f'{width:.4f}',
+            va='center',
+            color='white'
         )
 
-if len(podium) > 2:
-    with c3:
-        st.info(
-            f"🥉 {podium.iloc[2]['Title']}\n\nSkor: {podium.iloc[2]['SAW Score']:.4f}"
-        )
+    st.pyplot(fig)
 
-st.subheader("Top 10 Rekomendasi")
+# Tab 3
 
-top10 = ranking.head(10)
+with tab3:
 
-st.dataframe(
-    top10[
-        [
-            "Rank",
-            "Title",
-            "Original Price",
-            "SAW Score"
+    st.subheader("Matriks Normalisasi")
+
+    norm_display = normalized.head(20).copy()
+
+    st.dataframe(
+        norm_display.style.format("{:.4f}").background_gradient(cmap="viridis"),
+        use_container_width=True,
+    )
+
+# Tab 4
+
+with tab4:
+
+    st.subheader("Dataset")
+
+    search = st.text_input("🔍 Cari game:")
+
+    display_raw = df[[
+        "Title", "Original Price",
+        "Recent Reviews Number",
+        "All Reviews Number",
+        "Language Count",
+        "Feature Count",
+    ]]
+
+    if search:
+        display_raw = display_raw[
+            display_raw["Title"].str.contains(search, case=False, na=False)
         ]
-    ],
-    use_container_width=True
-)
 
-fig = px.bar(
-    top10,
-    x="SAW Score",
-    y="Title",
-    orientation="h",
-    text="SAW Score"
-)
+    st.dataframe(display_raw, use_container_width=True)
 
-fig.update_layout(
-    height=600,
-    yaxis={
-        "categoryorder":
-        "total ascending"
-    }
-)
+# Footer
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
+st.divider()
+st.caption("SPK Rekomendasi Game Steam • Streamlit • Metode SAW - Oleh kelompok 10")
+st.caption("Fahmi Firdaus (123240055) | Hendri Prasetyo (123240066)")
