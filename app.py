@@ -289,89 +289,166 @@ with tab1:
 # Tab 2
 
 with tab2:
-    col1, col2 = st.columns(2)
-    with col1:
 
-        st.subheader("Distribusi Bobot")
+    # --- Chart 1: SAW Score Bar Chart (existing) ---
+    st.subheader("📊 SAW Score Ranking")
 
-        fig_pie, ax_pie = plt.subplots(figsize=(5,5))
+    fig1, ax1 = plt.subplots(figsize=(10, max(5, top_n * 0.55)))
+    fig1.patch.set_facecolor('#111827')
+    ax1.set_facecolor('#111827')
 
-        labels = [
-            "Price",
-            "Recent",
-            "All Review",
-            "Language",
-            "Feature"
-        ]
+    bar_colors = plt.cm.plasma(np.linspace(0.2, 0.9, len(top)))
+    bars = ax1.barh(top["Title"], top["SAW Score"], color=bar_colors)
 
-        weights = [w1, w2, w3, w4, w5]
-
-        ax_pie.pie(
-            weights,
-            labels=labels,
-            autopct="%1.0f%%",
-            startangle=90
-        )
-
-        st.pyplot(fig_pie)
-
-    with col2:
-
-        st.subheader("Bobot Kriteria")
-
-        weight_df = pd.DataFrame({
-            "Kriteria": [
-                "Price",
-                "Recent Reviews",
-                "All Reviews",
-                "Languages",
-                "Features"
-            ],
-            "Bobot": weights
-        })
-
-        fig_weight, ax_weight = plt.subplots(figsize=(6,5))
-
-        ax_weight.barh(
-            weight_df["Kriteria"],
-            weight_df["Bobot"]
-        )
-
-        ax_weight.set_xlabel("Bobot")
-
-        st.pyplot(fig_weight)
-
-    fig, ax = plt.subplots(figsize=(10, max(5, top_n * 0.55)))
-
-    fig.patch.set_facecolor('#111827')
-    ax.set_facecolor('#111827')
-
-    colors = plt.cm.plasma(np.linspace(0.2, 0.9, len(top)))
-
-    bars = ax.barh(top["Title"], top["SAW Score"], color=colors)
-
-    ax.tick_params(colors='white')
-    ax.xaxis.label.set_color('white')
-    ax.yaxis.label.set_color('white')
-    ax.title.set_color('white')
-
-    ax.set_title(
-        f"Top {top_n} Steam Games",
-        fontsize=15,
-        fontweight='bold'
-    )
+    ax1.tick_params(colors='white')
+    ax1.xaxis.label.set_color('white')
+    ax1.yaxis.label.set_color('white')
+    ax1.title.set_color('white')
+    ax1.set_title(f"Top {top_n} Steam Games – SAW Score", fontsize=15, fontweight='bold')
 
     for bar in bars:
         width = bar.get_width()
-        ax.text(
-            width + 0.002,
-            bar.get_y() + bar.get_height()/2,
-            f'{width:.4f}',
-            va='center',
-            color='white'
+        ax1.text(width + 0.002, bar.get_y() + bar.get_height()/2,
+                 f'{width:.4f}', va='center', color='white', fontsize=8)
+
+    st.pyplot(fig1)
+
+    st.divider()
+
+    # --- Chart 2: Scatter Plot – Price vs All Reviews ---
+    st.subheader("💰 Harga vs Jumlah Review (Top Game)")
+
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    fig2.patch.set_facecolor('#111827')
+    ax2.set_facecolor('#111827')
+
+    scatter_colors = plt.cm.plasma(
+        (top["SAW Score"] - top["SAW Score"].min()) /
+        (top["SAW Score"].max() - top["SAW Score"].min() + 1e-9)
+    )
+
+    sc = ax2.scatter(
+        top["Original Price"],
+        top["All Reviews Number"],
+        c=top["SAW Score"],
+        cmap="plasma",
+        s=top["Feature Count"] * 20,
+        alpha=0.85,
+        edgecolors='white',
+        linewidths=0.5,
+    )
+
+    for _, row in top.iterrows():
+        ax2.annotate(
+            row["Title"][:18],
+            (row["Original Price"], row["All Reviews Number"]),
+            textcoords="offset points",
+            xytext=(6, 4),
+            fontsize=7,
+            color='white',
+            alpha=0.85,
         )
 
-    st.pyplot(fig)
+    cbar = fig2.colorbar(sc, ax=ax2)
+    cbar.set_label("SAW Score", color='white')
+    cbar.ax.yaxis.set_tick_params(color='white')
+    plt.setp(cbar.ax.yaxis.get_ticklabels(), color='white')
+
+    ax2.set_xlabel("Original Price ($)", color='white', fontsize=11)
+    ax2.set_ylabel("All Reviews Number (log)", color='white', fontsize=11)
+    ax2.set_title("Harga vs Review – ukuran titik = Feature Count", fontsize=13, fontweight='bold', color='white')
+    ax2.tick_params(colors='white')
+
+    for spine in ax2.spines.values():
+        spine.set_edgecolor('#334155')
+
+    st.pyplot(fig2)
+    st.caption("Warna titik menunjukkan SAW Score (lebih terang = lebih tinggi). Ukuran titik menunjukkan jumlah fitur.")
+
+    st.divider()
+
+    # --- Chart 3: Radar Chart – Profil Kriteria Top 5 ---
+    st.subheader("🕸️ Profil Kriteria – Top 5 Game")
+
+    top5 = top.head(5).copy()
+    criteria_labels = ["Price\n(Cost)", "Recent\nReviews", "All\nReviews", "Language\nCount", "Feature\nCount"]
+    norm_cols = ["C1", "C2", "C3", "C4", "C5"]
+    top5_norm = normalized.loc[top5.index, norm_cols].values
+
+    N = len(criteria_labels)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+    angles += angles[:1]
+
+    fig3, ax3 = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    fig3.patch.set_facecolor('#111827')
+    ax3.set_facecolor('#111827')
+
+    radar_colors = plt.cm.plasma(np.linspace(0.2, 0.9, len(top5)))
+
+    for i, (_, row) in enumerate(top5.iterrows()):
+        values = top5_norm[i].tolist()
+        values += values[:1]
+        ax3.plot(angles, values, color=radar_colors[i], linewidth=2, linestyle='solid')
+        ax3.fill(angles, values, color=radar_colors[i], alpha=0.15)
+
+    ax3.set_thetagrids(np.degrees(angles[:-1]), criteria_labels, color='white', fontsize=10)
+    ax3.tick_params(colors='white')
+    ax3.yaxis.set_tick_params(labelcolor='white')
+    ax3.set_ylim(0, 1)
+
+    for spine in ax3.spines.values():
+        spine.set_edgecolor('#334155')
+
+    ax3.set_title("Profil Normalisasi – Top 5 Game", color='white', fontsize=14, fontweight='bold', pad=20)
+
+    legend_labels = [row["Title"][:25] for _, row in top5.iterrows()]
+    legend = ax3.legend(legend_labels, loc='upper right', bbox_to_anchor=(1.35, 1.15),
+                        fontsize=8, framealpha=0.3, labelcolor='white',
+                        facecolor='#1e293b', edgecolor='#334155')
+
+    st.pyplot(fig3)
+    st.caption("Radar chart menampilkan nilai normalisasi setiap kriteria untuk 5 game teratas.")
+
+    st.divider()
+
+    # --- Chart 4: Distribusi Harga (Histogram) ---
+    st.subheader("📈 Distribusi Harga & Feature Count Dataset")
+
+    fig4, (ax4a, ax4b) = plt.subplots(1, 2, figsize=(12, 5))
+    fig4.patch.set_facecolor('#111827')
+
+    for ax_ in (ax4a, ax4b):
+        ax_.set_facecolor('#111827')
+        ax_.tick_params(colors='white')
+        ax_.xaxis.label.set_color('white')
+        ax_.yaxis.label.set_color('white')
+        ax_.title.set_color('white')
+        for spine in ax_.spines.values():
+            spine.set_edgecolor('#334155')
+
+    # Histogram harga
+    n_bins = 15
+    price_vals = df["Original Price"]
+    counts, bin_edges = np.histogram(price_vals, bins=n_bins)
+    bar_colors_hist = plt.cm.plasma(np.linspace(0.2, 0.9, n_bins))
+    ax4a.bar(bin_edges[:-1], counts, width=np.diff(bin_edges),
+             color=bar_colors_hist, edgecolor='#1e293b', align='edge')
+    ax4a.set_xlabel("Original Price ($)", fontsize=11)
+    ax4a.set_ylabel("Jumlah Game", fontsize=11)
+    ax4a.set_title("Distribusi Harga Game", fontsize=13, fontweight='bold')
+
+    # Bar chart Feature Count distribusi
+    feat_counts = df["Feature Count"].value_counts().sort_index()
+    fc_colors = plt.cm.plasma(np.linspace(0.2, 0.9, len(feat_counts)))
+    ax4b.bar(feat_counts.index.astype(str), feat_counts.values, color=fc_colors, edgecolor='#1e293b')
+    ax4b.set_xlabel("Jumlah Fitur", fontsize=11)
+    ax4b.set_ylabel("Jumlah Game", fontsize=11)
+    ax4b.set_title("Distribusi Feature Count", fontsize=13, fontweight='bold')
+    ax4b.tick_params(axis='x', rotation=45)
+
+    fig4.tight_layout(pad=3)
+    st.pyplot(fig4)
+    st.caption("Kiri: sebaran harga seluruh game dalam dataset. Kanan: sebaran jumlah fitur yang dimiliki tiap game.")
 
 # Tab 3
 
